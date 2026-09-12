@@ -44,12 +44,13 @@ des **données**, jamais comme du code SQL exécutable — la classe de vulnéra
 (défense en profondeur).
 
 ### Vérification
-- **Test manuel** : rejouer le payload `admin@juice-sh.op' --` / mot de passe vide → réponse
-  `401 Invalid email or password` au lieu d'une connexion réussie (voir
-  `remediation/verification/sqli-test.md`).
-- **Outil** : re-scan Semgrep (règle `javascript.sequelize.security.sequelize-injection`,
-  jeu de règles `p/owasp-top-ten`) → 0 finding sur `routes/login.ts` après correction
-  (voir `reports/semgrep-report-after.json` vs `reports/semgrep-report.json`).
+- **Test manuel** : rejouer le payload email `' OR 1=1--` / mot de passe quelconque sur
+  l'application reconstruite avec le code corrigé → connexion refusée, au lieu d'une
+  authentification réussie en tant qu'admin.
+- **Outil** : re-scan Semgrep via le pipeline Jenkins → passage de **9 findings (3 error /
+  6 warning)** avant correction à **7 findings (2 error / 5 warning)** après correction, la
+  baisse correspondant à la disparition du pattern d'injection SQL détecté sur
+  `routes/login.ts` (voir `reports/summary.md`).
 
 ---
 
@@ -83,11 +84,12 @@ principe : ne jamais faire confiance à un identifiant fourni par le client sans
 droits d'accès associés (OWASP A01:2021 - Broken Access Control).
 
 ### Vérification
-- **Test manuel** : utilisateur A se connecte, note son `bid` (ex. 5) ; requête
-  `GET /rest/basket/6` (panier de l'utilisateur B) avec le token de A → `403` au lieu du
-  contenu du panier de B (voir `remediation/verification/idor-test.md`).
-- **Outil** : re-scan DAST OWASP ZAP → l'alerte liée à l'énumération d'IDs consécutifs sur
-  `/rest/basket/{id}` n'est plus remontée / passe en information faible.
+- **Test manuel** (le seul pertinent ici — voir la Partie 6 sur les limites des outils
+  automatisés face aux failles de logique métier) : connecté avec un compte dont le `bid` réel
+  est `1` (vérifié en décodant le JWT), une requête `fetch('/rest/basket/2', ...)` renvoyait
+  avant correction le panier de l'utilisateur 2 (`UserId: 2` et son contenu). Après
+  reconstruction de l'application avec le code corrigé, la même requête renvoie
+  `403 Forbidden` avec `{ "error": "Access to this basket is not permitted." }`.
 
 ---
 
@@ -121,8 +123,11 @@ Séparer le secret du code source empêche sa divulgation par simple lecture du 
 correction standard recommandée pour CWE-798 (Use of Hard-Coded Credentials).
 
 ### Vérification
-- **Outil** : re-scan Gitleaks sur `lib/insecurity.ts` → 0 secret détecté après correction
-  (le fichier `jwt.key` n'est ni commité ni scanné dans le dépôt).
+- **Outil** : re-scan Gitleaks via le pipeline Jenkins → passage de **67 secrets détectés**
+  avant correction à **66 secrets** après correction (voir `reports/summary.md`) — la baisse
+  de exactement 1 correspond à la disparition de la clé privée RSA de `lib/insecurity.ts` (les
+  ~66 autres alertes restantes sont des faux positifs sur des données de test/challenge propres
+  à Juice Shop, discutés en Partie 6).
 - **Test manuel** : un ancien token signé avec l'ancienne clé privée (avant rotation) est
   rejeté par `isAuthorized()` car il ne correspond plus à la nouvelle clé publique
   `encryptionkeys/jwt.pub` → invalidation effective des tokens potentiellement compromis.

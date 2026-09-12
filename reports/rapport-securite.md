@@ -39,6 +39,10 @@ L'analyse combine :
 Toutes les analyses sont automatisées et rejouables via le pipeline Jenkins décrit en
 section 7, ce qui garantit la reproductibilité des résultats.
 
+Les captures d'écran servant de preuve (exploitation live de chaque vulnérabilité, résultats
+bruts des outils, vues du pipeline Jenkins) sont fournies séparément dans le dossier
+`screenshots/` du dépôt Git, plutôt qu'intégrées dans ce document.
+
 ## 3. Vulnérabilités identifiées
 
 | ID | Vulnérabilité | Composant | CWE | Description |
@@ -106,7 +110,7 @@ Un pipeline Jenkins (`Jenkinsfile`, à la racine du dépôt) automatise les cont
      ↓
 2. Build / Preparation        (construction de l'image Docker de l'app cible + démarrage)
      ↓
-3. Security Analysis          (parallèle : SAST Semgrep · SCA Trivy · Secret Detection Gitleaks)
+3. Security Analysis          (séquentiel : SAST Semgrep · SCA Trivy · Secret Detection Gitleaks)
      ↓
 4. Additional Security Check  (DAST OWASP ZAP baseline sur l'app en cours d'exécution)
      ↓
@@ -115,19 +119,46 @@ Un pipeline Jenkins (`Jenkinsfile`, à la racine du dépôt) automatise les cont
 6. Notification               (résumé + décision automatique de seuil)
 ```
 
+Les trois scans du stage 3 s'exécutent séquentiellement plutôt qu'en parallèle : sur la
+machine de laboratoire utilisée (8 Go de RAM), les lancer simultanément provoquait des
+plantages du moteur Docker Desktop par manque de mémoire.
+
 | Outil | Type | Vulnérabilités détectables | Limites | Étape du pipeline |
 |---|---|---|---|---|
-| **Semgrep** | SAST | Injections (SQL/commande), usage dangereux d'API (`innerHTML`, `eval`), mauvaises pratiques de crypto | Ne détecte que les patterns couverts par ses règles ; faux négatifs sur logique métier complexe ; pas d'exécution réelle du code | Stage 3, en parallèle |
-| **Trivy** | SCA | CVE connues dans les dépendances npm (versions vulnérables) | Ne détecte que les CVE déjà publiées/répertoriées ; ne dit rien sur le code métier propre | Stage 3, en parallèle |
-| **Gitleaks** | Secret detection | Clés API, tokens, clés privées, mots de passe codés en dur | Basé sur des expressions régulières / entropie : faux positifs (données aléatoires légitimes) et faux négatifs (secrets obfusqués/encodés) possibles | Stage 3, en parallèle |
+| **Semgrep** | SAST | Injections (SQL/commande), usage dangereux d'API (`innerHTML`, `eval`), mauvaises pratiques de crypto | Ne détecte que les patterns couverts par ses règles ; faux négatifs sur logique métier complexe ; pas d'exécution réelle du code | Stage 3 (1ᵉʳ des 3 scans) |
+| **Trivy** | SCA | CVE connues dans les dépendances npm (versions vulnérables) | Ne détecte que les CVE déjà publiées/répertoriées ; ne dit rien sur le code métier propre | Stage 3 (2ᵉ des 3 scans) |
+| **Gitleaks** | Secret detection | Clés API, tokens, clés privées, mots de passe codés en dur | Basé sur des expressions régulières / entropie : faux positifs (données aléatoires légitimes) et faux négatifs (secrets obfusqués/encodés) possibles | Stage 3 (3ᵉ des 3 scans) |
 | **OWASP ZAP (baseline)** | DAST | XSS reflété, en-têtes de sécurité manquants, configuration TLS/cookies, certaines injections détectables dynamiquement | Ne couvre que ce qu'il peut atteindre par crawl automatique (pas d'authentification avancée par défaut) ; ne détecte pas l'IDOR sans scénario dédié ; scan "baseline" volontairement non intrusif | Stage 4, après démarrage de l'application |
 
 ## 8. Résultats
 
-_(Section à compléter avec les résultats réels du run Jenkins : nombre de findings par
-outil, extraits de `reports/summary.md`, `reports/semgrep-report.json`,
-`reports/trivy-report.json`, `reports/gitleaks-report.json`, `reports/zap-report.html`,
-captures d'écran dans `screenshots/`.)_
+Le pipeline Jenkins a été exécuté deux fois : une première fois sur le code d'origine
+(vulnérable), une seconde fois après application des trois correctifs de la section 6. Les
+rapports bruts de chaque outil sont archivés dans `reports/` (`semgrep-report.json`,
+`trivy-report.json`, `gitleaks-report.json`, `zap-report.json/html/md`, `summary.md`).
+
+| Outil | Avant remédiation | Après remédiation | Interprétation |
+|---|---|---|---|
+| Semgrep (SAST) | 9 findings (3 error / 6 warning) | 7 findings (2 error / 5 warning) | -2 findings, cohérent avec la correction de l'injection SQL (V1) |
+| Trivy (SCA) | 8 critical / 45 high / 33 medium / 6 low | 8 critical / 45 high / 33 medium / 6 low (inchangé) | attendu : V6 (dépendances) a été documentée mais pas corrigée dans ce dépôt de démonstration |
+| Gitleaks (secrets) | 67 secrets détectés | 66 secrets détectés | -1, exactement la clé privée RSA retirée de `lib/insecurity.ts` (V4) |
+| OWASP ZAP (DAST) | échec technique du premier run (corrigé, voir ci-dessous) | Medium : 2, Low : 5, Informational : 3 | premier scan DAST complet et exploitable |
+
+**Note méthodologique** : le tout premier run du pipeline n'a produit aucun résultat DAST — le
+script `zap-baseline.py` refuse de s'exécuter si son répertoire de travail (`/zap/wrk`) n'est
+pas un point de montage réel, ce qui n'était pas le cas dans une première version du
+`Jenkinsfile`. Corrigé en montant un volume Docker nommé dédié avant le second run.
+
+**Findings notables du scan ZAP** (mauvaise configuration de sécurité, catégorie
+complémentaire aux 6 vulnérabilités de la section 3) :
+- Content Security Policy (CSP) Header Not Set
+- Cross-Domain Misconfiguration
+- Cross-Origin-Embedder-Policy Header Missing or Invalid
+- Dangerous JS Functions (fonctions JavaScript sensibles exposées côté client)
+
+Ces alertes sont de sévérité Medium/Low et n'ont pas été retenues comme vulnérabilité
+principale (V1-V6) mais confirment la valeur du DAST en complément de l'analyse manuelle et du
+SAST : elles portent sur la configuration HTTP de l'application plutôt que sur son code métier.
 
 Exemple de classification par priorité (issue de `PARTIE 5` de l'énoncé) :
 
