@@ -38,8 +38,13 @@ pipeline {
             }
         }
 
+        // Note: these three run SEQUENTIALLY, not in parallel. On a resource-constrained
+        // lab machine (8GB RAM total, most already claimed by the OS/Docker Desktop VM),
+        // running Semgrep + Trivy (which also downloads/loads a ~110MB vulnerability DB on
+        // first use) + Gitleaks concurrently pushed the Docker Desktop VM into repeated
+        // out-of-memory crashes. Trading a bit of wall-clock time for stability here.
         stage('Security Analysis') {
-            parallel {
+            stages {
                 stage('SAST - Semgrep') {
                     steps {
                         sh '''
@@ -86,7 +91,7 @@ pipeline {
                     docker rm -f zap-scan || true
                     docker run --name zap-scan --network ${NET} \
                         zaproxy/zap-stable zap-baseline.py \
-                        -t http://${TARGET_NAME}:3000 \
+                        -t http://${TARGET_NAME}:3000 -m 2 \
                         -J zap-report.json -r zap-report.html -w zap-report.md || true
                     docker cp zap-scan:/zap/wrk/zap-report.json ${REPORTS_DIR}/zap-report.json || true
                     docker cp zap-scan:/zap/wrk/zap-report.html ${REPORTS_DIR}/zap-report.html || true
