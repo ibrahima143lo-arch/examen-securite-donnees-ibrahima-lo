@@ -110,10 +110,7 @@ def add_table(doc, rows):
     doc.add_paragraph()
 
 
-def build(doc, md_path, skip_h1=False):
-    with open(md_path, "r", encoding="utf-8") as f:
-        lines = f.read().splitlines()
-
+def build(doc, lines, skip_h1=False):
     i = 0
     in_code = False
     code_buf = []
@@ -200,6 +197,11 @@ def build(doc, md_path, skip_h1=False):
         i += 1
 
 
+def read_lines(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
 def main():
     doc = Document()
 
@@ -213,11 +215,27 @@ def main():
     section.top_margin = Cm(2.0)
     section.bottom_margin = Cm(2.0)
 
-    build(doc, MAIN_MD)
+    main_lines = read_lines(MAIN_MD)
+    annex_lines = read_lines(ANNEX_MD)
+
+    split_at = next(idx for idx, ln in enumerate(main_lines) if ln.strip().startswith("## 1."))
+    header_lines, body_lines = main_lines[:split_at], main_lines[split_at:]
+
+    build(doc, header_lines)
+
+    doc.add_page_break()
+    doc.add_heading("Sommaire", level=1)
+    for ln in main_lines:
+        if ln.strip().startswith("## "):
+            doc.add_paragraph(ln.strip()[3:], style="List Bullet")
+    doc.add_paragraph("Annexe — Partie 6 : Analyse critique", style="List Bullet")
+    doc.add_page_break()
+
+    build(doc, body_lines)
 
     doc.add_page_break()
     doc.add_heading("Annexe — Partie 6 : Analyse critique", level=0)
-    build(doc, ANNEX_MD, skip_h1=True)
+    build(doc, annex_lines, skip_h1=True)
 
     add_page_numbers(doc)
 

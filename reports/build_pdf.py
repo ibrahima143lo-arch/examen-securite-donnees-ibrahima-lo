@@ -97,10 +97,7 @@ def make_table(rows, col_widths=None):
     return t
 
 
-def build_story(md_path, story, skip_h1=False):
-    with open(md_path, "r", encoding="utf-8") as f:
-        lines = f.read().splitlines()
-
+def build_story(lines, story, skip_h1=False):
     i = 0
     in_code = False
     code_buf = []
@@ -197,6 +194,22 @@ def add_page_number(canvas, doc):
     canvas.restoreState()
 
 
+def read_lines(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read().splitlines()
+
+
+def build_toc(main_lines):
+    """Table des matières générée à partir des titres de section réels (## N. ...)."""
+    entries = [ln.strip()[3:] for ln in main_lines if ln.strip().startswith("## ")]
+    entries.append("Annexe — Partie 6 : Analyse critique")
+    flow = [Paragraph("Sommaire", styles["H1"])]
+    for e in entries:
+        flow.append(Paragraph(inline(e), styles["Body"]))
+    flow.append(PageBreak())
+    return flow
+
+
 def main():
     doc = SimpleDocTemplate(
         OUT_PDF, pagesize=A4,
@@ -205,13 +218,24 @@ def main():
         title="Rapport de sécurité — OWASP Juice Shop",
         author="Ibrahima Lo",
     )
+    main_lines = read_lines(MAIN_MD)
+    annex_lines = read_lines(ANNEX_MD)
+
+    # Split the header block (title + author/role/... lines) from "## 1. Introduction"
+    # onward, so a real table of contents can be inserted right after the header.
+    split_at = next(idx for idx, ln in enumerate(main_lines) if ln.strip().startswith("## 1."))
+    header_lines, body_lines = main_lines[:split_at], main_lines[split_at:]
+
     story = []
-    build_story(MAIN_MD, story)
+    build_story(header_lines, story)
+    story.append(PageBreak())
+    story.extend(build_toc(main_lines))
+    build_story(body_lines, story)
 
     story.append(PageBreak())
     story.append(Paragraph("Annexe — Partie 6 : Analyse critique", styles["TitleFR"]))
     story.append(Spacer(1, 6))
-    build_story(ANNEX_MD, story, skip_h1=True)
+    build_story(annex_lines, story, skip_h1=True)
 
     doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
     print(f"Written: {OUT_PDF}")

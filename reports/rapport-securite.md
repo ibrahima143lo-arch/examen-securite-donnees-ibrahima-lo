@@ -201,8 +201,4 @@ fortement le risque mais ne remplacent pas l'analyse humaine, notamment pour les
 logique métier (comme l'IDOR V3) qu'aucun scanner générique ne peut garantir de détecter à
 100 %.
 
----
-
-## Annexe — Partie 6 : Analyse critique
-
-_Voir [`reports/analyse-critique.md`](analyse-critique.md)._
+L'analyse critique complète (Partie 6 de l'énoncé) est présentée en annexe de ce document.
