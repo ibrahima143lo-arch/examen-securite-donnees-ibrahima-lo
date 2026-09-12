@@ -1,0 +1,32 @@
+services:
+  juice-shop:
+    build:
+      context: ./juice-shop
+    container_name: juice-shop-target
+    ports:
+      - "3000:3000"
+    networks:
+      - secnet
+    restart: unless-stopped
+
+  jenkins:
+    build:
+      context: ./jenkins
+    container_name: jenkins-security
+    ports:
+      - "8080:8080"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace
+    networks:
+      - secnet
+    restart: unless-stopped
+
+networks:
+  secnet:
+    name: examen-secnet
+    driver: bridge
+
+volumes:
+  jenkins_home:

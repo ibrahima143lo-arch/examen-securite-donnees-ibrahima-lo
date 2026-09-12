@@ -1,0 +1,10 @@
+**/node_modules/
+juice-shop/frontend/.angular/
+juice-shop/frontend/dist/
+juice-shop/build/
+juice-shop/logs/
+*.log
+
+# Remediation V4 (CWE-798): private key must never be committed — it is loaded from this
+# untracked file instead of being hardcoded in lib/insecurity.ts. See remediation/README.md.
+juice-shop/encryptionkeys/jwt.key
