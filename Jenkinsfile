@@ -28,7 +28,7 @@ pipeline {
 
                     echo "Attente du démarrage de l'application..."
                     for i in $(seq 1 30); do
-                        if docker run --rm --network ${NET} curlimages/curl:8.10.1 -sf http://${TARGET_NAME}:3000/ > /dev/null 2>&1; then
+                        if curl -sf http://${TARGET_NAME}:3000/ > /dev/null 2>&1; then
                             echo "Application prête."
                             break
                         fi
@@ -74,13 +74,24 @@ pipeline {
 
         stage('Additional Security Check - DAST (OWASP ZAP)') {
             steps {
+                // Note: no bind-mount here on purpose. The Jenkins container talks to the
+                // *host's* Docker Desktop engine over the mounted socket (Docker-outside-of-
+                // Docker) — a "-v ${REPORTS_DIR}:..." would be resolved by that host engine,
+                // which has no idea what "/workspace" means. Instead we let zap-baseline.py
+                // write inside its own container, then `docker cp` the result out — `cp` goes
+                // through the Docker API and is written locally by the CLI that's already
+                // sitting on the correctly-mounted /workspace.
                 sh '''
                     mkdir -p ${REPORTS_DIR}
-                    docker run --rm --network ${NET} \
-                        -v ${REPORTS_DIR}:/zap/wrk/:rw \
-                        -t zaproxy/zap-stable zap-baseline.py \
+                    docker rm -f zap-scan || true
+                    docker run --name zap-scan --network ${NET} \
+                        zaproxy/zap-stable zap-baseline.py \
                         -t http://${TARGET_NAME}:3000 \
                         -J zap-report.json -r zap-report.html -w zap-report.md || true
+                    docker cp zap-scan:/zap/wrk/zap-report.json ${REPORTS_DIR}/zap-report.json || true
+                    docker cp zap-scan:/zap/wrk/zap-report.html ${REPORTS_DIR}/zap-report.html || true
+                    docker cp zap-scan:/zap/wrk/zap-report.md ${REPORTS_DIR}/zap-report.md || true
+                    docker rm -f zap-scan || true
                 '''
             }
         }
