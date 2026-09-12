@@ -125,9 +125,9 @@ plantages du moteur Docker Desktop par manque de mémoire.
 
 | Outil | Type | Vulnérabilités détectables | Limites | Étape du pipeline |
 |---|---|---|---|---|
-| **Semgrep** | SAST | Injections (SQL/commande), usage dangereux d'API (`innerHTML`, `eval`), mauvaises pratiques de crypto | Ne détecte que les patterns couverts par ses règles ; faux négatifs sur logique métier complexe ; pas d'exécution réelle du code | Stage 3 (1ᵉʳ des 3 scans) |
-| **Trivy** | SCA | CVE connues dans les dépendances npm (versions vulnérables) | Ne détecte que les CVE déjà publiées/répertoriées ; ne dit rien sur le code métier propre | Stage 3 (2ᵉ des 3 scans) |
-| **Gitleaks** | Secret detection | Clés API, tokens, clés privées, mots de passe codés en dur | Basé sur des expressions régulières / entropie : faux positifs (données aléatoires légitimes) et faux négatifs (secrets obfusqués/encodés) possibles | Stage 3 (3ᵉ des 3 scans) |
+| **Semgrep** | SAST | Injections (SQL/commande), usage dangereux d'API (`innerHTML`, `eval`), mauvaises pratiques de crypto | Ne détecte que les patterns couverts par ses règles ; faux négatifs sur logique métier complexe ; pas d'exécution réelle du code | Stage 3 (1er des 3 scans) |
+| **Trivy** | SCA | CVE connues dans les dépendances npm (versions vulnérables) | Ne détecte que les CVE déjà publiées/répertoriées ; ne dit rien sur le code métier propre | Stage 3 (2e des 3 scans) |
+| **Gitleaks** | Secret detection | Clés API, tokens, clés privées, mots de passe codés en dur | Basé sur des expressions régulières / entropie : faux positifs (données aléatoires légitimes) et faux négatifs (secrets obfusqués/encodés) possibles | Stage 3 (3e des 3 scans) |
 | **OWASP ZAP (baseline)** | DAST | XSS reflété, en-têtes de sécurité manquants, configuration TLS/cookies, certaines injections détectables dynamiquement | Ne couvre que ce qu'il peut atteindre par crawl automatique (pas d'authentification avancée par défaut) ; ne détecte pas l'IDOR sans scénario dédié ; scan "baseline" volontairement non intrusif | Stage 4, après démarrage de l'application |
 
 ## 8. Résultats
