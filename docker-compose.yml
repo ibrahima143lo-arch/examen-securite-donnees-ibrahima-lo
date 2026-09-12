@@ -15,6 +15,11 @@ services:
     container_name: jenkins-security
     ports:
       - "8080:8080"
+    environment:
+      # This lab's Git "remote" is a local path (/workspace, bind-mounted from the project
+      # directory) rather than a real network remote — Jenkins blocks local-path checkouts by
+      # default as a safety measure for multi-tenant instances, which doesn't apply here.
+      - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
