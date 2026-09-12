@@ -79,17 +79,22 @@ pipeline {
 
         stage('Additional Security Check - DAST (OWASP ZAP)') {
             steps {
-                // Note: no bind-mount here on purpose. The Jenkins container talks to the
-                // *host's* Docker Desktop engine over the mounted socket (Docker-outside-of-
-                // Docker) — a "-v ${REPORTS_DIR}:..." would be resolved by that host engine,
-                // which has no idea what "/workspace" means. Instead we let zap-baseline.py
-                // write inside its own container, then `docker cp` the result out — `cp` goes
-                // through the Docker API and is written locally by the CLI that's already
-                // sitting on the correctly-mounted /workspace.
+                // Two DooD gotchas fixed here:
+                // 1) zap-baseline.py flat-out refuses to run ("file based option specified but
+                //    /zap/wrk is not mounted") unless /zap/wrk is an actual mount — a plain
+                //    write-then-`docker cp` without any mount does not satisfy it.
+                // 2) A host bind-mount ("-v ${REPORTS_DIR}:...") would be resolved by the
+                //    *host's* Docker Desktop engine, which has no notion of "/workspace" (that
+                //    path only exists inside the Jenkins container). A named Docker *volume*
+                //    sidesteps this entirely — the daemon manages it directly, no host path
+                //    translation involved — and `docker cp` afterwards reads through that mount
+                //    and is written locally by the Jenkins container's own docker CLI.
                 sh '''
                     mkdir -p ${REPORTS_DIR}
                     docker rm -f zap-scan || true
-                    docker run --name zap-scan --network ${NET} \
+                    docker volume create zap-wrk >/dev/null
+                    docker run --rm -v zap-wrk:/zap/wrk busybox chmod -R 777 /zap/wrk
+                    docker run --name zap-scan --network ${NET} -v zap-wrk:/zap/wrk:rw \
                         zaproxy/zap-stable zap-baseline.py \
                         -t http://${TARGET_NAME}:3000 -m 2 \
                         -J zap-report.json -r zap-report.html -w zap-report.md || true
