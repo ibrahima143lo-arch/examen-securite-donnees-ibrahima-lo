@@ -14,7 +14,7 @@ project/
 ├── juice-shop/                # code source de l'application cible (copie locale, patchée pour la remédiation)
 ├── jenkins/Dockerfile         # image Jenkins avec Semgrep, Trivy, Gitleaks, Docker CLI
 ├── scripts/aggregate_report.py# agrégation des rapports d'outils -> reports/summary.md
-├── reports/                   # rapports générés par les outils (SAST/SCA/DAST/secrets)
+├── reports/                   # rapports (outils + rapport-securite.md/.pdf/.docx + scripts de génération)
 ├── screenshots/                # captures d'écran (app, Jenkins, résultats)
 └── remediation/                # avant/après des correctifs appliqués
 ```
@@ -46,17 +46,19 @@ docker exec jenkins-security cat /var/jenkins_home/secrets/initialAdminPassword
 
 1. Ouvrir Jenkins sur http://localhost:8080, installer les plugins suggérés (ou ceux déjà
    inclus dans l'image : `workflow-aggregator`, `git`, `docker-workflow`, `htmlpublisher`, `junit`).
-2. Créer un job **Pipeline** nommé `security-audit`.
-3. Dans la configuration du job, choisir soit :
-   - **Pipeline script from SCM** → Git → URL du dépôt (local ou GitHub) → `Jenkinsfile`, soit
-   - **Pipeline script** en collant directement le contenu de `Jenkinsfile`.
+2. Créer un job **Pipeline** (ex. `security-audit-juice-shop`).
+3. Dans la configuration du job, section **Pipeline** :
+   - **Definition** : `Pipeline script from SCM` ;
+   - **SCM** : `Git`, **Repository URL** : `/workspace` (chemin interne au conteneur Jenkins,
+     monté sur ce dépôt — voir `docker-compose.yml`) ;
+   - **Script Path** : `Jenkinsfile`.
 4. Lancer un build (**Build Now**).
 
 Le pipeline exécute dans l'ordre :
 
 1. **Checkout** — récupération du code source.
 2. **Build / Preparation** — construction de l'image Docker de Juice Shop et démarrage du conteneur cible.
-3. **Security Analysis** (en parallèle) :
+3. **Security Analysis** (**séquentiel** — voir note ci-dessous) :
    - **SAST** avec [Semgrep](https://semgrep.dev/) (règles OWASP Top 10 / JS / TS) ;
    - **SCA** avec [Trivy](https://aquasecurity.github.io/trivy/) (scan du filesystem / dépendances npm) ;
    - **Secret Detection** avec [Gitleaks](https://github.com/gitleaks/gitleaks).
@@ -67,6 +69,30 @@ Le pipeline exécute dans l'ordre :
 
 Tous les rapports bruts (JSON/HTML) sont archivés dans `reports/` par le job Jenkins
 (`archiveArtifacts`).
+
+### Notes / pièges connus
+
+- **Pourquoi le stage 3 est séquentiel et pas parallèle** : sur une machine avec peu de RAM
+  disponible, exécuter Semgrep + Trivy (qui télécharge une base de vulnérabilités ~110 Mo au
+  premier lancement) + Gitleaks en même temps peut faire planter le moteur Docker Desktop par
+  manque de mémoire. Adapter au besoin si votre machine a plus de marge.
+- **Checkout Git local** : Jenkins bloque par défaut les checkouts depuis un chemin local (pas
+  un vrai remote). C'est déjà autorisé via la variable d'environnement `JAVA_OPTS` du service
+  `jenkins` dans `docker-compose.yml` — rien à faire de plus.
+- **DAST / OWASP ZAP** : `zap-baseline.py` refuse de s'exécuter si `/zap/wrk` n'est pas un vrai
+  point de montage. Le `Jenkinsfile` crée un volume Docker nommé dédié pour cette raison — ne
+  pas remplacer ça par un bind-mount du workspace (échoue sous Docker-outside-of-Docker).
+
+### Régénérer le rapport (PDF / Word)
+
+```bash
+python3 reports/build_pdf.py    # nécessite: pip install reportlab
+python3 reports/build_docx.py   # nécessite: pip install python-docx
+```
+
+Les deux scripts lisent `reports/rapport-securite.md` + `reports/analyse-critique.md` (Partie 6,
+ajoutée automatiquement en annexe) et régénèrent respectivement `rapport-securite.pdf` et
+`rapport-securite.docx`.
 
 ## Outils utilisés
 
